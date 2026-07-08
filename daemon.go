@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -90,5 +91,10 @@ func RunE(gracePeriod time.Duration, routines ...Routine) error {
 		<-started // Wait for this routine to start before moving on.
 	}
 
-	return g.Wait()
+	// We don't propagate context.Canceled because it's expected to be cancelled!
+	if err := g.Wait(); err != nil && errors.Is(err, context.Canceled) {
+		return err
+	}
+
+	return nil
 }
