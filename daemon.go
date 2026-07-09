@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	ErrCompleted           = errors.New("daemon: routine completed")
 	ErrGracePeriodExceeded = errors.New("daemon: grace period exceeded")
 	ErrInterrupted         = errors.New("daemon: interrupted")
 )
@@ -40,16 +41,21 @@ func Run(gracePeriod time.Duration, routines ...Routine) int {
 // its Initialize method will be called before Run, and before moving onto starting the next
 // Routine. If any Routine fails to initialize, the rest of the routines will not be started.
 func RunE(gracePeriod time.Duration, routines ...Routine) error {
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	return run(sigCh, gracePeriod, routines...)
+}
+
+// run is the internal orchestration implementation for running routines.
+func run(sigCh <-chan os.Signal, gracePeriod time.Duration, routines ...Routine) error {
 	if len(routines) == 0 {
 		panic("daemon: no routines provided")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
 
 	stopCh := make(chan error, 1)
 	doneCh := make(chan error, 1)
@@ -63,13 +69,19 @@ func RunE(gracePeriod time.Duration, routines ...Routine) error {
 			if initializable, ok := routine.(InitializableRoutine); ok {
 				if err := initializable.Initialize(ctx); err != nil {
 					sendSignificantError(ctx, err, &once, stopCh)
-					cancel()
+					cancel() // Cancel the other routines if one fails to initialize
 					break
 				}
 			}
 
 			g.Go(func() error {
 				if err := routine.Run(ctx); err != nil {
+					// We allow ErrCompleted to signal that this routine has exited cleanly and
+					// shouldn't cancel the other routines.
+					if errors.Is(err, ErrCompleted) {
+						return nil
+					}
+
 					sendSignificantError(ctx, err, &once, stopCh)
 					cancel() // Cancel the other routines if one errs in-flight
 					return err
