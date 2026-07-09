@@ -52,11 +52,11 @@ func RunE(gracePeriod time.Duration, routines ...Routine) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	for _, routine := range routines {
-		started := make(chan error)
+		initialized := make(chan error)
 		g.Go(func() error {
-			return routine.Run(ctx, started)
+			return routine.Run(ctx, initialized)
 		})
-		<-started // Wait for this routine to start before moving on.
+		<-initialized // Wait for this routine to start before moving on.
 	}
 
 	// We don't propagate context.Canceled because it's expected to be cancelled!

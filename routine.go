@@ -9,19 +9,21 @@ type Routine interface {
 	// The returned error should be nil if the Routine ended successfully, or an error if it ended
 	// with an error.
 	//
-	// The started channel may be used to signal the Routine has finished preparing to start, and is
-	// moving into the "started" state. If this isn't necessary, the channel can simply be closed
-	// immediately, but this channel MUST be closed or the further routines will not be started.
-	Run(ctx context.Context, started chan<- error) error
+	// The initialized channel may be used to signal the Routine has finished preparing to start,
+	// and is moving onto starting. Not all routines will need to take advantage of this, but this
+	// channel MUST be closed by the routine, or further threads will not be run. This is useful for
+	// threads which need to prepare something before starting, like an in-memory store, or doing
+	// some kind of cache-warming.
+	Run(ctx context.Context, initialized chan<- error) error
 }
 
 // RoutineFunc wraps a function that matches the signature of Routine.Run into a Routine.
 // Useful for adapting compatible functions into a Routine.
-type RoutineFunc func(ctx context.Context, started chan<- error) error
+type RoutineFunc func(ctx context.Context, initialized chan<- error) error
 
 // Run this RoutineFunc.
-func (fn RoutineFunc) Run(ctx context.Context, started chan<- error) error {
-	return fn(ctx, started)
+func (fn RoutineFunc) Run(ctx context.Context, initialized chan<- error) error {
+	return fn(ctx, initialized)
 }
 
 // SimpleRoutineFunc wraps a function that has a simpler signature than Routine.Run into a Routine.
@@ -29,7 +31,7 @@ func (fn RoutineFunc) Run(ctx context.Context, started chan<- error) error {
 type SimpleRoutineFunc func(ctx context.Context) error
 
 // Run this SimpleRoutineFunc.
-func (fn SimpleRoutineFunc) Run(ctx context.Context, started chan<- error) error {
-	close(started) // Unused in this case, but we this means we can't guarantee ordering.
+func (fn SimpleRoutineFunc) Run(ctx context.Context, initialized chan<- error) error {
+	close(initialized) // Unused in this case, but we this means we can't guarantee ordering.
 	return fn(ctx)
 }
