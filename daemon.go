@@ -3,9 +3,9 @@ package daemon
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -15,7 +15,6 @@ import (
 // os.Exit.
 func Run(gracePeriod time.Duration, routines ...Routine) int {
 	if err := RunE(gracePeriod, routines...); err != nil {
-		fmt.Println(err)
 		return 1
 	}
 	return 0
@@ -33,19 +32,28 @@ func Run(gracePeriod time.Duration, routines ...Routine) int {
 // to the next routine. Handy for doing things like warming up caches or populating in-memory
 // stores.
 func RunE(gracePeriod time.Duration, routines ...Routine) error {
+	// Channel to avoid leaking goroutines from this function.
+	done := make(chan struct{})
+	defer close(done)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
 	go func() {
-		<-sigCh
-		fmt.Println("caught interrupt, cancelling")
-		cancel()
+		select {
+		case <-done:
+			return
+		case <-sigCh:
+			cancel()
+		}
 
 		select {
+		case <-done:
+			return
 		case <-time.After(gracePeriod):
 		case <-sigCh:
 		}
@@ -64,6 +72,7 @@ func RunE(gracePeriod time.Duration, routines ...Routine) error {
 		// Wait for this routine to start before moving on. Capture failures.
 		if initErr = <-initialized; initErr != nil {
 			cancel()
+			break
 		}
 	}
 
@@ -74,7 +83,7 @@ func RunE(gracePeriod time.Duration, routines ...Routine) error {
 
 	// If we got an initialization error, we'll report that over anything else, as it's probably the
 	// most relevant one to see.
-	if initErr != nil && !errors.Is(err, context.Canceled) {
+	if initErr != nil && !errors.Is(initErr, context.Canceled) {
 		return initErr
 	}
 
