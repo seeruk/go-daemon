@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -50,60 +51,78 @@ func RunE(gracePeriod time.Duration, routines ...Routine) error {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	errCh := make(chan error, len(routines))
+	stopCh := make(chan error, 1)
+	doneCh := make(chan error, 1)
+
+	once := sync.Once{}
 
 	go func() {
-		defer close(errCh)
-
 		g, ctx := errgroup.WithContext(ctx)
 
-		var initErr error
 		for _, routine := range routines {
 			if initializable, ok := routine.(InitializableRoutine); ok {
 				if err := initializable.Initialize(ctx); err != nil {
-					initErr = err
+					sendSignificantError(ctx, err, &once, stopCh)
 					cancel()
 					break
 				}
 			}
 
 			g.Go(func() error {
-				return routine.Run(ctx)
+				if err := routine.Run(ctx); err != nil {
+					sendSignificantError(ctx, err, &once, stopCh)
+					cancel() // Cancel the other routines if one errs in-flight
+					return err
+				}
+				return nil
 			})
 		}
 
-		err := g.Wait()
-
-		// For the following error checks, we don't propagate context.Canceled because it's expected to
-		// be cancelled. It might've been cancelled by the previous routing failing to initialize too.
-
-		// If we got an initialization error, we'll report that over anything else, as it's probably the
-		// most relevant one to see.
-		if initErr != nil && !errors.Is(initErr, context.Canceled) {
-			errCh <- initErr
-			return
-		}
-
-		// Otherwise, we check if there was an error in-flight with any of the routines.
-		if err != nil && !errors.Is(err, context.Canceled) {
-			errCh <- err
-			return
-		}
+		doneCh <- significantError(ctx, g.Wait())
 	}()
 
-	select {
-	case err := <-errCh:
-		return err
-	case <-sigCh:
-		cancel()
-	}
+	var stopErr error
 
 	select {
-	case err := <-errCh:
+	case stopErr = <-stopCh:
+	case <-sigCh:
+	case err := <-doneCh:
+		// If we didn't get a signal, and we aren't stopping because there was an error (from
+		// stopCh), then all the routines must have simply finished.
+		return err
+	}
+
+	cancel()
+
+	select {
+	case err := <-doneCh:
+		// We always try to wait for the routines to stop, if we got into this case, then the
+		// routines did all stop within the grace period. If we see a stopErr, it means an error
+		// actually occurred either during initialization, or after a routine had started.
+		if stopErr != nil {
+			return stopErr
+		}
 		return err
 	case <-time.After(gracePeriod):
-		return ErrGracePeriodExceeded
+		return errors.Join(ErrGracePeriodExceeded, stopErr)
 	case <-sigCh:
-		return ErrInterrupted
+		return errors.Join(ErrInterrupted, stopErr)
 	}
+}
+
+func sendSignificantError(ctx context.Context, err error, once *sync.Once, stopCh chan error) {
+	if stopErr := significantError(ctx, err); stopErr != nil {
+		once.Do(func() {
+			stopCh <- stopErr
+		})
+	}
+}
+
+func significantError(ctx context.Context, err error) error {
+	// We don't want to return a context.Canceled if our context was the one that produced it, but
+	// if it came from within a routine, we should still keep that.
+	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+		return nil
+	}
+	return err
 }
