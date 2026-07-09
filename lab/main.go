@@ -10,10 +10,7 @@ import (
 
 func main() {
 	os.Exit(daemon.Run(time.Second,
-		daemon.RoutineFunc(func(ctx context.Context, started chan<- error) error {
-			time.Sleep(time.Second)
-			close(started)
-
+		daemon.RoutineFunc(func(ctx context.Context) error {
 			select {
 			case <-time.After(60 * time.Second):
 			case <-ctx.Done():
@@ -21,10 +18,7 @@ func main() {
 			}
 			return nil
 		}),
-		daemon.RoutineFunc(func(ctx context.Context, started chan<- error) error {
-			time.Sleep(time.Second)
-			close(started)
-
+		daemon.RoutineFunc(func(ctx context.Context) error {
 			select {
 			case <-time.After(60 * time.Second):
 			case <-ctx.Done():
