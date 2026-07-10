@@ -34,6 +34,8 @@ func Run(gracePeriod time.Duration, routines ...Routine) int {
 // routines don't terminate within the provided grace period, an ErrGracePeriodExceeded error will
 // be returned. If a second signal is received RunE will attempt to return immediately, returning an
 // ErrInterrupted. In this scenario, if the program doesn't exit, some resources may leak.
+// Routines can access a context that's cancelled on either of these events using
+// ForceShutdownContextFromContext.
 //
 // The first error encountered is returned, except for context.Canceled errors.
 //
@@ -57,6 +59,9 @@ func run(sigCh <-chan os.Signal, gracePeriod time.Duration, routines ...Routine)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	forceCtx, forceCancel := context.WithCancel(context.Background())
+	defer forceCancel()
+
 	stopCh := make(chan error, 1)
 	doneCh := make(chan error, 1)
 
@@ -64,6 +69,9 @@ func run(sigCh <-chan os.Signal, gracePeriod time.Duration, routines ...Routine)
 
 	go func() {
 		g, ctx := errgroup.WithContext(ctx)
+
+		// Allow routines to access the force shutdown signal so they can control shutdown.
+		ctx = context.WithValue(ctx, forceShutdownContextKey{}, forceCtx)
 
 		for _, routine := range routines {
 			if initializable, ok := routine.(InitializableRoutine); ok {
@@ -116,8 +124,10 @@ func run(sigCh <-chan os.Signal, gracePeriod time.Duration, routines ...Routine)
 		}
 		return err
 	case <-time.After(gracePeriod):
+		forceCancel()
 		return errors.Join(ErrGracePeriodExceeded, stopErr)
 	case <-sigCh:
+		forceCancel()
 		return errors.Join(ErrInterrupted, stopErr)
 	}
 }
@@ -137,4 +147,14 @@ func significantError(ctx context.Context, err error) error {
 		return nil
 	}
 	return err
+}
+
+type forceShutdownContextKey struct{}
+
+// ForceShutdownContextFromContext returns the force shutdown context from the given context, if
+// possible. The returned context is cancelled if the routines fail to stop within the configured
+// grace period, or if the process is interrupted a second time.
+func ForceShutdownContextFromContext(ctx context.Context) (context.Context, bool) {
+	forceCtx, ok := ctx.Value(forceShutdownContextKey{}).(context.Context)
+	return forceCtx, ok
 }

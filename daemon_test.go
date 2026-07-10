@@ -273,6 +273,42 @@ func Test_run(t *testing.T) {
 		})
 	})
 
+	t.Run("should signal force shutdown if routines do not stop", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			sigCh := make(chan os.Signal, 1)
+			errCh := make(chan error, 1)
+			forced := make(chan struct{})
+			release := make(chan struct{})
+
+			go func() {
+				errCh <- run(sigCh, time.Second, RoutineFunc(func(ctx context.Context) error {
+					forceCtx, ok := ForceShutdownContextFromContext(ctx)
+					if !ok {
+						return errors.New("force shutdown context not set")
+					}
+
+					<-ctx.Done()
+					<-forceCtx.Done()
+					close(forced)
+					<-release
+					return nil
+				}))
+			}()
+
+			synctest.Wait()
+			sigCh <- os.Interrupt
+			synctest.Wait()
+
+			require.ErrorIs(t, <-errCh, ErrGracePeriodExceeded)
+
+			synctest.Wait()
+			assertClosed(t, forced)
+
+			close(release)
+			synctest.Wait()
+		})
+	})
+
 	t.Run("should preserve stop error if routines do not stop", func(t *testing.T) {
 		t.Run("from initialize", func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -357,4 +393,14 @@ func collectNFromChan[T any](ch chan T, n int) []T {
 		out = append(out, <-ch)
 	}
 	return out
+}
+
+func assertClosed(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	default:
+		assert.Fail(t, "channel should be closed")
+	}
 }
