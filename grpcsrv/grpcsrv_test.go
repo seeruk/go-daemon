@@ -1,25 +1,28 @@
-package httpsrv_test
+package grpcsrv_test
 
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/seeruk/go-daemon"
-	"github.com/seeruk/go-daemon/httpsrv"
+	"github.com/seeruk/go-daemon/grpcsrv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func TestRoutine_Initialize(t *testing.T) {
 	t.Run("should panic if initialized with a nil server", func(t *testing.T) {
-		routine := httpsrv.NewRoutine(nil)
+		routine := grpcsrv.NewRoutine(nil, "")
 
-		assert.PanicsWithValue(t, "httpsrv: nil server", func() {
+		assert.PanicsWithValue(t, "grpcsrv: nil server", func() {
 			_ = routine.Initialize(context.Background())
 		})
 	})
@@ -29,66 +32,60 @@ func TestRoutine_Initialize(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = ln.Close() })
 
-		routine := httpsrv.NewRoutine(&http.Server{Addr: ln.Addr().String()})
+		routine := grpcsrv.NewRoutine(grpc.NewServer(), ln.Addr().String())
 		assert.Error(t, routine.Initialize(context.Background()))
 	})
 }
 
 func TestRoutine_Run(t *testing.T) {
 	t.Run("should panic if run before initialization", func(t *testing.T) {
-		routine := httpsrv.NewRoutine(&http.Server{})
+		routine := grpcsrv.NewRoutine(grpc.NewServer(), "")
 
-		assert.PanicsWithValue(t, "httpsrv: routine not initialized", func() {
+		assert.PanicsWithValue(t, "grpcsrv: routine not initialized", func() {
 			_ = routine.Run(context.Background())
 		})
 	})
 
 	t.Run("should panic if run without a force shutdown context", func(t *testing.T) {
-		routine := httpsrv.NewRoutine(&http.Server{})
+		routine := grpcsrv.NewRoutine(grpc.NewServer(), "127.0.0.1:0")
 
 		err := routine.Initialize(context.Background())
 		require.NoError(t, err)
 
-		assert.PanicsWithValue(t, "httpsrv: force shutdown context not set on context", func() {
+		assert.PanicsWithValue(t, "grpcsrv: force shutdown context not set on context", func() {
 			_ = routine.Run(context.Background())
 		})
 	})
 
-	t.Run("should serve HTTP and call lifecycle hooks", func(t *testing.T) {
+	t.Run("should serve gRPC and call lifecycle hooks", func(t *testing.T) {
 		served := make(chan net.Addr, 1)
 		stopped := make(chan error, 1)
 		stop := make(chan struct{})
 		stopErr := errors.New("stop")
 
-		server := &http.Server{
-			Addr: "127.0.0.1:0",
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = io.WriteString(w, "hello")
-			}),
-		}
+		server := grpc.NewServer()
+		healthpb.RegisterHealthServer(server, health.NewServer())
 
-		routine := httpsrv.NewRoutine(server,
-			httpsrv.OnServe(func(ln net.Listener, _ *http.Server) {
+		routine := grpcsrv.NewRoutine(server, "127.0.0.1:0",
+			grpcsrv.OnServe(func(ln net.Listener, _ *grpc.Server) {
 				served <- ln.Addr()
 			}),
-			httpsrv.OnStop(func(_ net.Listener, _ *http.Server, err error) {
+			grpcsrv.OnStop(func(_ net.Listener, _ *grpc.Server, err error) {
 				stopped <- err
 			}),
 		)
 
 		errCh := runUntilStopped(time.Second, routine, stop, stopErr)
-		addr := receive(t, served)
 
-		client := &http.Client{Timeout: time.Second}
-		resp, err := client.Get("http://" + addr.String())
+		conn := newClient(t, receive(t, served))
+		client := healthpb.NewHealthClient(conn)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		resp, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
 		require.NoError(t, err)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, "hello", string(body))
+		assert.Equal(t, healthpb.HealthCheckResponse_SERVING, resp.Status)
 
 		close(stop)
 		assert.ErrorIs(t, receive(t, errCh), stopErr)
@@ -96,33 +93,23 @@ func TestRoutine_Run(t *testing.T) {
 	})
 
 	t.Run("should return ErrAlreadyStopped if the server was stopped before the routine starts", func(t *testing.T) {
-		server := &http.Server{Addr: ":0"}
-		err := server.Close()
-		require.NoError(t, err)
+		server := grpc.NewServer()
+		server.Stop()
 
-		routine := httpsrv.NewRoutine(server)
+		routine := grpcsrv.NewRoutine(server, "127.0.0.1:0")
 		assert.ErrorIs(t, daemon.RunE(time.Second, routine), daemon.ErrAlreadyStopped)
 	})
 
-	t.Run("should return TLS configuration errors", func(t *testing.T) {
-		dir := t.TempDir()
-
-		listenerCh := make(chan net.Listener, 1)
-		routine := httpsrv.NewRoutineWithTLS(
-			&http.Server{Addr: "127.0.0.1:0"},
-			dir+"/cert.pem",
-			dir+"/key.pem",
-			httpsrv.OnServe(func(ln net.Listener, _ *http.Server) {
-				listenerCh <- ln
+	t.Run("should return serving errors", func(t *testing.T) {
+		routine := grpcsrv.NewRoutine(grpc.NewServer(), "127.0.0.1:0",
+			grpcsrv.OnServe(func(ln net.Listener, _ *grpc.Server) {
+				_ = ln.Close()
 			}),
 		)
 
 		err := daemon.RunE(time.Second, routine)
-
-		listener := receive(t, listenerCh)
-		t.Cleanup(func() { _ = listener.Close() })
-
-		assert.ErrorContains(t, err, "cert.pem")
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, daemon.ErrAlreadyStopped)
 	})
 
 	t.Run("should force close requests after the grace period", func(t *testing.T) {
@@ -134,31 +121,28 @@ func TestRoutine_Run(t *testing.T) {
 		stop := make(chan struct{})
 		stopErr := errors.New("stop")
 
-		server := &http.Server{
-			Addr: "127.0.0.1:0",
-			Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-				close(requestStarted)
-				<-releaseRequest
-			}),
-		}
-		routine := httpsrv.NewRoutine(server,
-			httpsrv.OnServe(func(ln net.Listener, _ *http.Server) {
+		server := grpc.NewServer()
+		healthpb.RegisterHealthServer(server, &blockingHealthServer{
+			requestStarted: requestStarted,
+			releaseRequest: releaseRequest,
+		})
+		routine := grpcsrv.NewRoutine(server, "127.0.0.1:0",
+			grpcsrv.OnServe(func(ln net.Listener, _ *grpc.Server) {
 				served <- ln.Addr()
 			}),
-			httpsrv.OnStop(func(_ net.Listener, _ *http.Server, err error) {
+			grpcsrv.OnStop(func(_ net.Listener, _ *grpc.Server, err error) {
 				stopped <- err
 			}),
 		)
 
 		errCh := runUntilStopped(20*time.Millisecond, routine, stop, stopErr)
-		addr := receive(t, served)
+		conn := newClient(t, receive(t, served))
+		client := healthpb.NewHealthClient(conn)
 		requestErrCh := make(chan error, 1)
 		go func() {
-			client := &http.Client{Timeout: time.Second}
-			resp, err := client.Get("http://" + addr.String())
-			if resp != nil {
-				_ = resp.Body.Close()
-			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			_, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
 			requestErrCh <- err
 		}()
 		receive(t, requestStarted)
@@ -170,6 +154,33 @@ func TestRoutine_Run(t *testing.T) {
 		assert.ErrorIs(t, receive(t, stopped), context.Canceled)
 		assert.Error(t, receive(t, requestErrCh))
 	})
+}
+
+type blockingHealthServer struct {
+	healthpb.UnimplementedHealthServer
+	requestStarted chan<- struct{}
+	releaseRequest <-chan struct{}
+}
+
+func (s *blockingHealthServer) Check(
+	ctx context.Context,
+	_ *healthpb.HealthCheckRequest,
+) (*healthpb.HealthCheckResponse, error) {
+	close(s.requestStarted)
+	select {
+	case <-s.releaseRequest:
+		return &healthpb.HealthCheckResponse{}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func newClient(t *testing.T, addr net.Addr) *grpc.ClientConn {
+	t.Helper()
+	conn, err := grpc.NewClient(addr.String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
 }
 
 func runUntilStopped(
