@@ -31,7 +31,7 @@ Some convenience wrappers and commonly used routine types are included as part o
 
 * `daemon.RoutineFunc`: Allows routine-like functions to be used as routines.
 * `daemon.InitializableRoutineAdapter`: A type to adapt a pair of functions into an 
-  [`InitializableRoutine`](routine.go#L18)
+  [`InitializableRoutine`](https://pkg.go.dev/github.com/seeruk/go-daemon#InitializableRoutine)
 * `httpsrv/`: This package contains a routine implementation that takes an `http.Server` and 
   executes it as a routine, with graceful shutdown support.
 
