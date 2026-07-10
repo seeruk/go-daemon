@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	ErrAlreadyStopped      = errors.New("daemon: already stopped")
 	ErrCompleted           = errors.New("daemon: routine completed")
 	ErrGracePeriodExceeded = errors.New("daemon: grace period exceeded")
 	ErrInterrupted         = errors.New("daemon: interrupted")

@@ -9,10 +9,6 @@ import (
 	"github.com/seeruk/go-daemon"
 )
 
-// ErrAlreadyStopped is an error returned if the server passed to this Routine has already been
-// stopped when the routine attempts to start.
-var ErrAlreadyStopped = errors.New("httpsrv: already stopped")
-
 // Option is a function that is used to configure an HTTP server Routine.
 type Option func(*Routine)
 
@@ -20,7 +16,7 @@ type Option func(*Routine)
 // be called with the listener and server, so information can be pulled from them.
 func OnServe(cb func(net.Listener, *http.Server)) Option {
 	return func(r *Routine) {
-		r.onListen = cb
+		r.onServe = cb
 	}
 }
 
@@ -40,8 +36,8 @@ type Routine struct {
 	server   *http.Server
 	serve    func(net.Listener, *http.Server) error
 
-	onListen func(net.Listener, *http.Server)
-	onStop   func(net.Listener, *http.Server, error)
+	onServe func(net.Listener, *http.Server)
+	onStop  func(net.Listener, *http.Server, error)
 }
 
 // NewRoutine returns a new Routine instance for an HTTP server without TLS support.
@@ -73,7 +69,7 @@ func NewRoutineWithTLS(server *http.Server, certFile, keyFile string, opts ...Op
 }
 
 // Initialize attempts to bind to the address requested on the server provided to this routine.
-func (r *Routine) Initialize(_ context.Context) error {
+func (r *Routine) Initialize(ctx context.Context) error {
 	if r.server == nil {
 		panic("httpsrv: nil server")
 	}
@@ -83,12 +79,14 @@ func (r *Routine) Initialize(_ context.Context) error {
 		addr = ":http"
 	}
 
-	ln, err := net.Listen("tcp", addr)
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	r.listener = ln
+	r.listener = listener
 	return nil
 }
 
@@ -103,8 +101,8 @@ func (r *Routine) Run(ctx context.Context) (err error) {
 		panic("httpsrv: force shutdown context not set on context")
 	}
 
-	if r.onListen != nil {
-		r.onListen(r.listener, r.server)
+	if r.onServe != nil {
+		r.onServe(r.listener, r.server)
 	}
 
 	defer func() {
@@ -121,7 +119,7 @@ func (r *Routine) Run(ctx context.Context) (err error) {
 	select {
 	case err = <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
-			return ErrAlreadyStopped
+			return daemon.ErrAlreadyStopped
 		}
 		return err
 

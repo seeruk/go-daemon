@@ -108,7 +108,7 @@ func TestRoutine_Run(t *testing.T) {
 		errCh := runUntilStopped(time.Second, routine, stop, nil)
 
 		close(stop)
-		assert.ErrorIs(t, receive(t, errCh), httpsrv.ErrAlreadyStopped)
+		assert.ErrorIs(t, receive(t, errCh), daemon.ErrAlreadyStopped)
 	})
 
 	t.Run("should return TLS configuration errors", func(t *testing.T) {
