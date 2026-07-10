@@ -3,7 +3,7 @@ module github.com/seeruk/go-daemon/grpcsrv
 go 1.26.4
 
 require (
-	github.com/seeruk/go-daemon v0.0.0-20260710214207-a3576dd1df5a
+	github.com/seeruk/go-daemon v0.1.0-alpha.1
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.82.0
 )

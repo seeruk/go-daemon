@@ -16,6 +16,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/seeruk/go-daemon v0.0.0-20260710214207-a3576dd1df5a h1:qP2hMtPzWI2unJvVNv3I00fqtDvSBSX9OEhJrWMx29o=
 github.com/seeruk/go-daemon v0.0.0-20260710214207-a3576dd1df5a/go.mod h1:1e/5XTis09dwA0bsZgJMq4xiY/lh+anfjnqAYWIOSak=
+github.com/seeruk/go-daemon v0.1.0-alpha.1 h1:UT1ixCqoTqGJS2CbWfo2521nGBnhbc9drZwLKL626Xg=
+github.com/seeruk/go-daemon v0.1.0-alpha.1/go.mod h1:1e/5XTis09dwA0bsZgJMq4xiY/lh+anfjnqAYWIOSak=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
