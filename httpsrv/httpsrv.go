@@ -124,6 +124,9 @@ func (r *Routine) Run(ctx context.Context) (err error) {
 	case <-ctx.Done():
 		shutdownErrCh := make(chan error, 1)
 		go func() {
+			// In-flight requests can block this forever, depending on how the server / it's
+			// handlers are configured. We call it in a goroutine so that we can force a close, as
+			// signalled by the "force shutdown context" provided on the context passed to Run.
 			shutdownErrCh <- r.server.Shutdown(context.Background())
 		}()
 
