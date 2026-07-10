@@ -27,8 +27,15 @@ There are a couple of entry-points for `go-daemon`:
 2. `daemon.RunE(gracePeriod time.Duration, routines ...Routine) error`: Similar to `Run`, but
    returns the actual error, so you can respond to it however you want (e.g. logging).
 
-Some convenience wrappers and commonly used routine types are included as part of `go-daemon`. Once
-you have your threads, you can use `go-daemon` like this:
+Some convenience wrappers and commonly used routine types are included as part of `go-daemon`.
+
+* `daemon.RoutineFunc`: Allows routine-like functions to be used as routines.
+* `daemon.InitializableRoutineAdapter`: A type to adapt a pair of functions into an 
+  [`InitializableRoutine`](routine.go#L18)
+* `httpsrv/`: This package contains a routine implementation that takes an `http.Server` and 
+  executes it as a routine, with graceful shutdown support.
+
+Once you have your threads, you can use `go-daemon` like this:
 
 ```go
 package main
