@@ -5,8 +5,8 @@ A library for building graceful, long-running daemons from composable background
 For "daemon"-style applications, like web or RPC servers, you'll often want to have one or more
 background routines. You'll also want them to do things like shutdown gracefully when requested, or
 have your application quit immediately on a second signal, or to have control over the order in
-which these background routines. This library aims to tackle all of these requirements with a simple
-and straightforward API. 
+which these background routines start. This library aims to tackle all of these requirements with a 
+simple and straightforward API. 
 
 My philosophy on a `main` function is that it should focus on orchestrating the lifecycle of an
 application. As a result, it should be pretty lightweight! This library helps keep your `main` clean
