@@ -9,6 +9,10 @@ import (
 	"github.com/seeruk/go-daemon"
 )
 
+// ErrAlreadyStopped is an error returned if the server passed to this Routine has already been
+// stopped when the routine attempts to start.
+var ErrAlreadyStopped = errors.New("httpsrv: already stopped")
+
 // Option is a function that is used to configure an HTTP server Routine.
 type Option func(*Routine)
 
@@ -117,7 +121,7 @@ func (r *Routine) Run(ctx context.Context) (err error) {
 	select {
 	case err = <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+			return ErrAlreadyStopped
 		}
 		return err
 
