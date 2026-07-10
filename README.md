@@ -58,6 +58,9 @@ func main() {
 See the contents of [routine.go](routine.go) to see the interfaces that this library provides, and
 to see the available convenience types.
 
+There's also an example in [example/main.go](example/main.go), showcasing the `httpsrv` subpackage,
+which provides a convenient way to run HTTP servers as daemons with graceful shutdown support.
+
 ## License
 
 MIT
