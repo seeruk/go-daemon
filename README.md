@@ -10,7 +10,7 @@ simple and straightforward API.
 
 My philosophy on a `main` function is that it should focus on orchestrating the lifecycle of an
 application. As a result, it should be pretty lightweight! This library helps keep your `main` clean
-and ensure it's clear what is happening.
+and ensure that what's really happening is clear.
 
 ## Installation
 
