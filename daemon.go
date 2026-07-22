@@ -142,7 +142,9 @@ func sendSignificantError(ctx context.Context, err error, once *sync.Once, stopC
 }
 
 func significantError(ctx context.Context, err error) error {
-	if errors.Is(err, context.Canceled) {
+	// We don't want to return a context.Canceled if our context was the one that produced it, but
+	// if it came from within a routine, we should still keep that.
+	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 		return nil
 	}
 	return err
