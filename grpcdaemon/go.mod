@@ -1,4 +1,4 @@
-module github.com/seeruk/go-daemon/grpcsrv
+module github.com/seeruk/go-daemon/grpcdaemon
 
 go 1.26.4
 

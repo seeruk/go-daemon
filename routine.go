@@ -1,6 +1,9 @@
 package daemon
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Routine represents a background routine to be run. The given context is used to signal
 // cancellation and should be used by the Routine implementation to stop gracefully.
@@ -28,6 +31,29 @@ type RoutineFunc func(ctx context.Context) error
 // Run starts this RoutineFunc.
 func (fn RoutineFunc) Run(ctx context.Context) error {
 	return fn(ctx)
+}
+
+// PeriodicRoutine creates a RoutineFunc that runs runFunc at a fixed interval. Calls are made
+// sequentially; a call that takes longer than interval will not overlap with another call.
+//
+// The returned RoutineFunc blocks until its context is cancelled or runFunc returns an error.
+// PeriodicRoutine expects interval to be greater than zero and runFunc to be set.
+func PeriodicRoutine(interval time.Duration, runFunc RoutineFunc) RoutineFunc {
+	return func(ctx context.Context) error {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := runFunc(ctx); err != nil {
+					return err
+				}
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
 }
 
 // InitializableRoutineAdapter is a convenience type for creating InitializableRoutines

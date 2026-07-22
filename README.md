@@ -32,7 +32,7 @@ Some convenience wrappers and commonly used routine types are included as part o
 * `daemon.RoutineFunc`: Allows routine-like functions to be used as routines.
 * `daemon.InitializableRoutineAdapter`: A type to adapt a pair of functions into an 
   [`InitializableRoutine`](https://pkg.go.dev/github.com/seeruk/go-daemon#InitializableRoutine)
-* `httpsrv/`: This package contains a routine implementation that takes an `http.Server` and 
+* `httpdaemon/`: This package contains a routine implementation that takes an `http.Server` and 
   executes it as a routine, with graceful shutdown support.
 
 Once you have your threads, you can use `go-daemon` like this:
@@ -65,8 +65,9 @@ func main() {
 See the contents of [routine.go](routine.go) to see the interfaces that this library provides, and
 to see the available convenience types.
 
-There's also an example in [example/main.go](example/main.go), showcasing the `httpsrv` subpackage,
-which provides a convenient way to run HTTP servers as daemons with graceful shutdown support.
+There's also an example in [example/main.go](example/main.go), showcasing the `httpdaemon` 
+subpackage, which provides a convenient way to run HTTP servers as daemons with graceful shutdown 
+support.
 
 ## License
 

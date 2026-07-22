@@ -1,4 +1,4 @@
-package grpcsrv
+package grpcdaemon
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func NewRoutine(server *grpc.Server, addr string, opts ...Option) *Routine {
 
 func (r *Routine) Initialize(ctx context.Context) error {
 	if r.server == nil {
-		panic("grpcsrv: nil server")
+		panic("grpcdaemon: nil server")
 	}
 
 	addr := r.addr
@@ -72,12 +72,12 @@ func (r *Routine) Initialize(ctx context.Context) error {
 
 func (r *Routine) Run(ctx context.Context) (err error) {
 	if r.listener == nil {
-		panic("grpcsrv: routine not initialized")
+		panic("grpcdaemon: routine not initialized")
 	}
 
 	forceCtx, ok := daemon.ForceShutdownContextFromContext(ctx)
 	if !ok {
-		panic("grpcsrv: force shutdown context not set on context")
+		panic("grpcdaemon: force shutdown context not set on context")
 	}
 
 	if r.onServe != nil {

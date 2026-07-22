@@ -1,4 +1,4 @@
-package httpsrv
+package httpdaemon
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func NewRoutineWithTLS(server *http.Server, certFile, keyFile string, opts ...Op
 // Initialize attempts to bind to the address requested on the server provided to this routine.
 func (r *Routine) Initialize(ctx context.Context) error {
 	if r.server == nil {
-		panic("httpsrv: nil server")
+		panic("httpdaemon: nil server")
 	}
 
 	addr := r.server.Addr
@@ -93,12 +93,12 @@ func (r *Routine) Initialize(ctx context.Context) error {
 // Run attempts to start serving connections.
 func (r *Routine) Run(ctx context.Context) (err error) {
 	if r.listener == nil {
-		panic("httpsrv: routine not initialized")
+		panic("httpdaemon: routine not initialized")
 	}
 
 	forceCtx, ok := daemon.ForceShutdownContextFromContext(ctx)
 	if !ok {
-		panic("httpsrv: force shutdown context not set on context")
+		panic("httpdaemon: force shutdown context not set on context")
 	}
 
 	if r.onServe != nil {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/seeruk/go-daemon"
-	"github.com/seeruk/go-daemon/httpsrv"
+	"github.com/seeruk/go-daemon/httpdaemon"
 )
 
 func main() {
@@ -17,16 +17,16 @@ func main() {
 	))
 }
 
-func httpServerRoutine() *httpsrv.Routine {
+func httpServerRoutine() *httpdaemon.Routine {
 	server := &http.Server{
 		Addr: ":0",
 	}
 
-	return httpsrv.NewRoutine(server,
-		httpsrv.OnServe(func(listener net.Listener, server *http.Server) {
+	return httpdaemon.NewRoutine(server,
+		httpdaemon.OnServe(func(listener net.Listener, server *http.Server) {
 			slog.Info("http server started", "addr", listener.Addr().String())
 		}),
-		httpsrv.OnStop(func(listener net.Listener, server *http.Server, err error) {
+		httpdaemon.OnStop(func(listener net.Listener, server *http.Server, err error) {
 			slog.Info("http server stopped")
 		}),
 	)
